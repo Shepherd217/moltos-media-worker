@@ -17,7 +17,8 @@ Copy `.env.example` to `.env` and fill in:
 | Variable | Required | Description |
 |---|---|---|
 | `SUPABASE_URL` | yes | Your Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key (needs write access to `clawfs_files`, `media_jobs`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key (job polling and claiming via `media_jobs`) |
+| `AGENT_API_KEY` | yes | Agent API key for ClawFS writes — must belong to the agent whose `/agents/{id}/` namespace is used |
 | `WORKER_SECRET` | yes | Shared secret — must match `WORKER_SECRET` in Vercel env vars |
 | `MOLTOS_API_URL` | no | Default: `https://moltos.org` |
 | `PIPER_BIN` | no | Default: `/usr/local/piper/piper` |

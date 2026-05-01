@@ -3,47 +3,39 @@
 const { createClient } = require('@supabase/supabase-js')
 const { spawn }        = require('child_process')
 const { writeFile, readFile, unlink, mkdir, rm } = require('fs/promises')
-const { createHash }   = require('crypto')
 const { tmpdir }       = require('os')
 const path             = require('path')
 
 const SUPABASE_URL      = process.env.SUPABASE_URL
 const SUPABASE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY
 const WORKER_SECRET     = process.env.WORKER_SECRET
+const AGENT_API_KEY     = process.env.AGENT_API_KEY
 const MOLTOS_API_URL    = process.env.MOLTOS_API_URL    || 'https://moltos.org'
 const PIPER_BIN         = process.env.PIPER_BIN         || '/usr/local/piper/piper'
 const PIPER_MODELS_DIR  = process.env.PIPER_MODELS_DIR  || '/opt/piper/models'
 const POLL_INTERVAL_MS  = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10)
 
-if (!SUPABASE_URL || !SUPABASE_KEY || !WORKER_SECRET) {
-  console.error('Missing required env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, WORKER_SECRET')
+if (!SUPABASE_URL || !SUPABASE_KEY || !WORKER_SECRET || !AGENT_API_KEY) {
+  console.error('Missing required env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, WORKER_SECRET, AGENT_API_KEY')
   process.exit(1)
 }
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-// CID matches MoltOS formula: bafy + sha256(base64(content) + agentId).slice(0,44)
-function makeCid(buf, agentId) {
-  return 'bafy' + createHash('sha256')
-    .update(buf.toString('base64'))
-    .update(agentId)
-    .digest('hex')
-    .slice(0, 44)
-}
-
-async function writeClawFS(agentId, filePath, buf, contentType) {
-  const fileCid = makeCid(buf, agentId)
-  const { error } = await sb.from('clawfs_files').insert({
-    agent_id:        agentId,
-    path:            filePath,
-    cid:             fileCid,
-    content_preview: buf.toString('base64'),
-    content_type:    contentType,
-    visibility:      'private',
-    created_at:      new Date().toISOString(),
+async function writeClawFS(filePath, buf, contentType) {
+  const res = await fetch(`${MOLTOS_API_URL}/api/clawfs/write/simple`, {
+    method:  'POST',
+    headers: { 'X-API-Key': AGENT_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path:         filePath,
+      content:      buf.toString('base64'),
+      content_type: contentType,
+      visibility:   'private',
+    }),
   })
-  if (error) throw new Error(`ClawFS write failed: ${error.message}`)
-  return fileCid
+  if (!res.ok) throw new Error(`ClawFS write failed ${res.status}: ${await res.text()}`)
+  const { cid } = await res.json()
+  return cid
 }
 
 function spawnProc(cmd, args, stdinText) {
@@ -86,8 +78,8 @@ async function processVoiceDiary(job) {
       Promise.resolve(Buffer.from(text, 'utf-8')),
     ])
     const [audioCid, transcriptCid] = await Promise.all([
-      writeClawFS(agent_id, `/agents/${agent_id}/voice-diary/${jobId}.wav`, audioBuf, 'audio/wav'),
-      writeClawFS(agent_id, `/agents/${agent_id}/voice-diary/${jobId}.txt`, transcriptBuf, 'text/plain'),
+      writeClawFS(`/agents/${agent_id}/voice-diary/${jobId}.wav`, audioBuf, 'audio/wav'),
+      writeClawFS(`/agents/${agent_id}/voice-diary/${jobId}.txt`, transcriptBuf, 'text/plain'),
     ])
     await notifyCallback(jobId, 'complete', { audio_cid: audioCid, transcript_cid: transcriptCid, duration_seconds: null })
   } finally {
@@ -115,9 +107,9 @@ async function processResurrectionMessage(job) {
       Promise.resolve(Buffer.from(message, 'utf-8')),
     ])
     const [audioCid, videoCid, transcriptCid] = await Promise.all([
-      writeClawFS(agent_id, `/agents/${agent_id}/resurrection/${jobId}.wav`, audioBuf, 'audio/wav'),
-      writeClawFS(agent_id, `/agents/${agent_id}/resurrection/${jobId}.mp4`, videoBuf, 'video/mp4'),
-      writeClawFS(agent_id, `/agents/${agent_id}/resurrection/${jobId}.txt`, transcriptBuf, 'text/plain'),
+      writeClawFS(`/agents/${agent_id}/resurrection/${jobId}.wav`, audioBuf, 'audio/wav'),
+      writeClawFS(`/agents/${agent_id}/resurrection/${jobId}.mp4`, videoBuf, 'video/mp4'),
+      writeClawFS(`/agents/${agent_id}/resurrection/${jobId}.txt`, transcriptBuf, 'text/plain'),
     ])
     await notifyCallback(jobId, 'complete', { audio_cid: audioCid, video_cid: videoCid, transcript_cid: transcriptCid })
   } finally {
@@ -144,7 +136,6 @@ async function processHyperframesRender(job) {
     ])
     const videoBuf = await readFile(tmpMp4)
     const videoCid = await writeClawFS(
-      agent_id,
       `/agents/${agent_id}/flight-videos/${session_id}.mp4`,
       videoBuf,
       'video/mp4'
