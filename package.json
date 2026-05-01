@@ -1,0 +1,13 @@
+{
+  "name": "moltos-media-worker",
+  "version": "1.0.0",
+  "description": "MoltOS async media worker — Piper TTS, ffmpeg, Hyperframes",
+  "main": "worker.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0"
+  }
+}

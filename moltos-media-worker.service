@@ -1,0 +1,17 @@
+[Unit]
+Description=MoltOS Media Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/moltos-media-worker
+EnvironmentFile=/opt/moltos-media-worker/.env
+ExecStart=/usr/bin/node worker.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
