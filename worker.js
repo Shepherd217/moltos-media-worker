@@ -67,8 +67,9 @@ async function notifyCallback(jobId, status, result, error) {
 }
 
 async function processVoiceDiary(job) {
-  const { id: jobId, agent_id, payload } = job
-  const { text, voice_name } = payload
+  const { id: jobId, agent_id, payload, created_at } = job
+  const { text, voice_name, trigger } = payload
+  const ts = new Date(created_at).toISOString().slice(0, 19).replace(/:/g, '-') + 'Z'
   const modelPath = path.join(PIPER_MODELS_DIR, `${voice_name}.onnx`)
   const tmpWav = path.join(tmpdir(), `mltw_${jobId}.wav`)
   try {
@@ -78,8 +79,8 @@ async function processVoiceDiary(job) {
       Promise.resolve(Buffer.from(text, 'utf-8')),
     ])
     const [audioCid, transcriptCid] = await Promise.all([
-      writeClawFS(`/agents/${agent_id}/voice-diary/${jobId}.wav`, audioBuf, 'audio/wav'),
-      writeClawFS(`/agents/${agent_id}/voice-diary/${jobId}.txt`, transcriptBuf, 'text/plain'),
+      writeClawFS(`/agents/${agent_id}/voice/diary/${ts}_${trigger}.wav`, audioBuf, 'audio/wav'),
+      writeClawFS(`/agents/${agent_id}/voice/diary/${ts}_${trigger}.txt`, transcriptBuf, 'text/plain'),
     ])
     await notifyCallback(jobId, 'complete', { audio_cid: audioCid, transcript_cid: transcriptCid, duration_seconds: null })
   } finally {
